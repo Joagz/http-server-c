@@ -8,12 +8,14 @@
 struct client_info {
     int pid;
     int id;
+    int port;
     struct in_addr addr;
     struct tm * time;
 };
 
 struct handler {
     char * url;
+    char * file;
     char * method;
     void (*fn)(void);
 };
@@ -28,11 +30,9 @@ struct connection_pool {
     struct client_info clients[POOL_SIZE];
 };
 
-static struct connection_pool POOL;
-static struct handler_list HANDLERS;
-
 struct connection_pool * getConnectionPool();
 struct handler_list * getHandlersList();
 
-void setMapping(char * url, void (*handler)(void), char * method);
+void setMapping(char * url, void (*handler)(void), char * method, char * file);
 void addToConnectionPool(struct client_info client);
+void editFromConnectionPool(int index, int pid);

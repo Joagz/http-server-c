@@ -3,6 +3,9 @@
 #include "contextholder.h"
 #include "filter.h"
 
+#include <asm-generic/errno.h>
+#include <asm-generic/socket.h>
+#include <signal.h>
 #include <string.h>
 #include <netinet/in.h>
 #include <stdio.h> 
@@ -40,6 +43,10 @@ void run_http_server()
     server_addr.sin_port = htons(PORT);
     server_addr.sin_family = AF_INET;
 
+    int opt = 1;
+
+    err_n_die(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)), "Could not set SO_REUSEADDR");
+
     err_n_die(bind(sock, (struct sockaddr*) &server_addr, sizeof(server_addr)), 
             "Could not bind socket in server");
     
@@ -52,31 +59,78 @@ void run_http_server()
         len = sizeof(client_addr);
         memset(&client_addr, 0, len);
         int client = accept(sock, (struct sockaddr*) &client_addr, &len);
-        int pid_save;
-        
+        int pid_save, con_client_i, skip = 0;
+        struct connection_pool * pool = getConnectionPool();
+
+        for(int i = pool->length; i > 0; i--)
+        {
+            if(pool->clients[i].addr.s_addr == client_addr.sin_addr.s_addr)
+                if(kill(pool->clients[i].pid, 0) == 0)
+                {
+                    skip = 1;
+                    con_client_i = i;
+                    kill(pool->clients[i].pid, SIGTERM);
+                    current_process_count--;
+                    break;
+                }
+        }
+
         if((pid = fork()) == -1) 
         {
             perror("Client connection error (can't create subprocess for client handling)");
-
-            // Send response to client
-
             continue;
         } 
         else if(pid == 0) 
         {
 
-            time_t t = time(NULL);
+            int bytes_read = 0;
+            char buffer[MAX_REQUEST_SIZE];
+            if( read(client, buffer, MAX_REQUEST_SIZE) == EOF ) continue;
+
+            struct http_req * req = filterHttpRequest(buffer);
+            int handlerId = filterHandler(req);
+
+            struct handler_list * handlerList = getHandlersList(); 
+            struct handler hndlr = (*handlerList).handlers[handlerId];
+            void (* fn)(void) = hndlr.fn;
             
+            fn();
+
+            FILE * fp = find_page(hndlr.file);
+            char * bytes = read_page_bytes(fp);
+
+            char * response = generateHttpResponse(hndlr.file, bytes);
+
+            free(req);
+
+            write(client, response, strlen(response));
+            
+            free(response);
+            shutdown(client, SHUT_RDWR);
+            close(client);
+
+            exit(EXIT_SUCCESS);
+        }
+        else if(pid > 0) {
+            if(skip == 1){
+                
+                editFromConnectionPool(con_client_i, pid);
+            
+                continue;
+            }
+            time_t t = time(NULL);
+
             struct tm * lt = localtime(&t);
 
             struct client_info c_info = {
                 .pid=pid_save,
                 .id=current_process_count,
                 .addr=client_addr.sin_addr,
-                .time=lt
+                .time=lt,
+                .port=client_addr.sin_port
             };
-        
-            printf("%d, %d, %d, %d %d %d Day N.%d\n",
+
+            printf("PID: %d, ID: %d, ADDR: %d, TIME INFO: %d %d %d Day N.%d\n",
                     c_info.pid,
                     c_info.id,
                     c_info.addr.s_addr,
@@ -84,26 +138,10 @@ void run_http_server()
                     c_info.time->tm_min,
                     c_info.time->tm_hour,
                     c_info.time->tm_wday
-            );
+                  );
 
             addToConnectionPool(c_info);
 
-            int bytes_read = 0;
-            char buffer[MAX_REQUEST_SIZE];
-            while((bytes_read = read(client, buffer, MAX_REQUEST_SIZE) > EOF));
-            
-            struct http_req req = filterHttpRequest(buffer);
-            int handlerId = filterHandler(req);
-            
-            struct handler_list * handlerList = getHandlersList(); 
-    
-            void (* fn)(void) = (*handlerList).handlers[handlerId].fn;
-                
-            fn();
-
-            close(client);
-        }
-        else if(pid > 0) {
             current_process_count++;
             pid_save = pid;
         }

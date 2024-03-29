@@ -4,19 +4,19 @@
 
 static struct connection_pool POOL = {
     .length=0,
-    .clients={0x00}
 };
 
 static struct handler_list HANDLERS = {
-    .length=0,
-    .handlers={0x00}
+    .length=0
 };
 
-void setMapping(char *url, void (*handler)(), char * method)
+void setMapping(char *url, void (*handler)(), char * method, char * file)
 {   
     HANDLERS.handlers[HANDLERS.length].url = url;
     HANDLERS.handlers[HANDLERS.length].method = method;
     HANDLERS.handlers[HANDLERS.length].fn = handler;
+    HANDLERS.handlers[HANDLERS.length].file = file;
+
     HANDLERS.length++;
 }
 
@@ -39,4 +39,10 @@ struct handler_list * getHandlersList()
 struct connection_pool * getConnectionPool()
 {
     return &POOL;
+}
+
+void editFromConnectionPool(int index, int pid){
+    
+    POOL.clients[index].pid = pid;
+
 }

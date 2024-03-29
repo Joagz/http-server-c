@@ -1,10 +1,57 @@
 #include "http-commons.h"
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <linux/limits.h>
 
 #define LGET 3
+#define MAX_NAME 128
+#define MAX_EXT 16
+
+char * generateHttpResponse(char * fileToSend, char * fileData) 
+{
+    char name[MAX_NAME];
+    char ext[MAX_EXT];
+    char * contentType = (char*) malloc(64);
+
+    int fi=0,j=0,k=0;
+
+    while(fileToSend[fi] != '.')
+    {
+        if(j > MAX_NAME){
+            return "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\r\nFile name too long!\r\n";
+            break;
+        }
+        name[j] = fileToSend[fi];
+        j++;
+        fi++;
+    }
+    name[j] = '\0';
+
+    fi++;
+
+    while (fi < strlen(fileToSend)) {
+        if(k > MAX_EXT) {
+            return "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\r\nFile extension too long!\r\n";
+            break;
+        }
+        ext[k] = fileToSend[fi];
+        k++; 
+        fi++;
+    }
+    ext[k] = '\0';
+
+    if(strcmp(ext,"css") == 0) {contentType = "text/css";} 
+    else if(strcmp(ext, "html") == 0) {contentType = "text/html";} 
+    else if(strcmp(ext,"js") == 0) {contentType = "text/javascript";}
+
+    char * response = (char*) malloc(strlen(contentType) + strlen(fileData) + strlen(DEF_HTTPRESPONSE) + 255);
+
+    sprintf(response, "HTTP/1.1 200 OK\r\nContent-type: %s\r\n\r\n%s", contentType, fileData);
+  
+    return response;
+}
 
 char * read_page_bytes(FILE *fp)
 {
@@ -20,24 +67,15 @@ char * read_page_bytes(FILE *fp)
     return page;
 }
 
-// We assume that the request is of type GET
 FILE * find_page(char *req)
 {
-    
-    int i = LGET+1, k = 0;
-    FILE *file;
-    char buf[MAX_INPUT] = {0};
-    memset(&buf, 0, MAX_INPUT);
 
-    while(req[i] != ' '){
-        buf[k] = req[i];
-        i++; k++;
-    }
     
-    char * fl = (char*) malloc(strlen(buf) + strlen(PAGES_FOLDER));
+    FILE * file;
+    char * fl = (char*) malloc(strlen(req) + strlen(RESOURCES_DIR));
 
-    strcpy(fl, PAGES_FOLDER);
-    strcat(fl, buf);
+    strcpy(fl, RESOURCES_DIR);
+    strcat(fl, req);
 
     file = fopen(fl, "r+");
     

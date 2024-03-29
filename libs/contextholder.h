@@ -6,7 +6,7 @@
 #define POOL_SIZE 100
 
 struct client_info {
-    int pid;
+    int pid; // Not in esp32
     int id;
     int port;
     struct in_addr addr;
